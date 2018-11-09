@@ -1,0 +1,4 @@
+data/word2vec/*.*
+data/arpa_lm/*.*
+models/*.*
+.vscode
