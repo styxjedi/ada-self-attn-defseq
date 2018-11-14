@@ -6,11 +6,10 @@ import json
 import torch
 import torch.nn as nn
 from torch.utils import data
-from utils import to_var
-from ada_self_attn import Encoder2Decoder
+from modules.utils import to_var
 from options import add_args
+from model_wrapper import ModelWrapper
 import codecs
-import os
 
 
 class ResDataset(data.Dataset):
@@ -23,7 +22,6 @@ class ResDataset(data.Dataset):
                 cur_w = [word2idx[line[0]]]
                 cur_s = [sememe2idx[l] for l in line[1].split(' ')]
                 cur_d = [word2idx[l] for l in line[2].split(' ')]
-                cur_w.append(word2idx['<s>'])
                 cur_w.extend(cur_s)
                 word_sememes.append(cur_w)
                 definitions.append(cur_d)
@@ -51,29 +49,10 @@ class ResDataset(data.Dataset):
         return len(self.word_sememes)
 
 
-def gen_score(adaptive, res_loader):
-    LMcriterion = nn.CrossEntropyLoss(ignore_index=0)
-    if torch.cuda.is_available():
-        LMcriterion.cuda()
-
-    adaptive.eval()
-    total_scores = []
-    print('--------------Start Scoring on Generated dataset---------------')
-    for i, (word_sememes, definition) in enumerate(res_loader):
-        word_sememes = to_var(word_sememes)
-        definition = to_var(definition)
-        targets = definition[:, 1:]
-
-        scores, _ = adaptive(word_sememes, definition)
-        scores = scores[:, :-1, :].transpose(1, 2)
-        loss = LMcriterion(scores, targets)
-        total_scores.append(str(np.exp(loss.item())))
-        if (i + 1) % 10 == 0:
-            print('[%s/%s]' % ((i + 1), len(res_loader)))
-    return total_scores
-
-
 def main(args):
+    loss_fn = nn.CrossEntropyLoss(ignore_index=0)
+    adaptive = ModelWrapper(args, loss_fn)
+
     with open(args.word2idx_path, 'r') as fr:
         word2idx = json.loads(fr.read())
     with open(args.sememe2idx_path, 'r') as fr:
@@ -81,39 +60,8 @@ def main(args):
     results = ResDataset(args.gen_file_path, word2idx, sememe2idx)
     res_loader = data.DataLoader(dataset=results, batch_size=1, shuffle=False)
 
-    if torch.cuda.is_available():
-        pretrained_word_emb = torch.Tensor(
-            np.load(args.pretrained_word_emb_path)).cuda()
-        pretrained_sememe_emb = torch.Tensor(
-            np.load(args.pretrained_sememe_emb_path)).cuda()
-    else:
-        pretrained_word_emb = torch.Tensor(
-            np.load(args.pretrained_word_emb_path))
-        pretrained_sememe_emb = torch.Tensor(
-            np.load(args.pretrained_sememe_emb_path))
+    scores = adaptive.score(res_loader)
 
-    # Load pretrained model or build from scratch
-    adaptive = Encoder2Decoder(args, pretrained_word_emb, pretrained_sememe_emb)
-    if torch.cuda.is_available():
-        adaptive = adaptive.cuda()
-
-    if torch.cuda.device_count() > 1:
-        device_ids = range(torch.cuda.device_count())
-        adaptive = nn.DataParallel(adaptive, device_ids=device_ids)
-        print(list(adaptive.children())[0])
-    else:
-        print(adaptive)
-
-    if args.pretrained:
-        pretrained = args.pretrained
-        if os.path.islink(pretrained):
-            pretrained = os.readlink(pretrained)
-        if torch.cuda.device_count() > 1:
-            adaptive.module.load_state_dict(torch.load(pretrained))
-        else:
-            adaptive.load_state_dict(torch.load(pretrained))
-
-    scores = gen_score(adaptive, res_loader)
     with codecs.open(args.output_path, 'w', 'utf-8') as fw:
         fw.write('\n'.join(scores))
     return 0
@@ -122,4 +70,5 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     args = add_args(parser, mode='score')
+    print(args)
     sys.exit(main(args))

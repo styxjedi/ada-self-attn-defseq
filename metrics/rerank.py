@@ -6,20 +6,8 @@ from nltk.util import ngrams
 import operator
 import re
 
-pattern = re.compile(r'(?P<words>.+) (or|,|, or|of|and) (?P=words)\b')
-def_file = sys.argv[1]
-lm_file = sys.argv[2]
-function_word_file = sys.argv[3]
-output_file = sys.argv[4]
-
-lm = kenlm.Model(lm_file)
-function_words = set()
-with open(function_word_file) as ifp:
-    for line in ifp:
-        function_words.add(line.strip())
 
 def clean_repeated(text, max_len=6, min_len=1):
-    global pattern
     s = pattern.search(text)
     new_text = text
     if s is not None:
@@ -91,22 +79,42 @@ def score(definition, function_words=None):
     #     trigram_penalty =  float(sum(trigram.values())) / len(trigram.keys())
     return -1 * lm.score(definition) / (len(tokens) + 1) * trigram_penalty * bigram_penalty
 
-print("Reading the definitions...")
-with open(def_file) as ifp:
-    defs, ndefs = read_definition_file(ifp)
-print(" - {} words being defined".format(len(defs)))
-print(" - {} definitions".format(ndefs))
+def rerank(argv=None):
+    if argv is None:
+        argv = sys.argv
+        if len(argv) != 5:
+            raise ValueError('Usage: <def_file> <lm_file> <func_words> <output>')
 
-print("Reranking...")
-ofp_all = open(output_file, 'w')
-ofp_top = open(output_file + '.top', 'w')
-for w in defs:
-    score_defs = []
-    for s, d in defs[w]:
-        score_defs.append((s, d, score(d)))
-    score_defs.sort(key=lambda tup: tup[2])
-    ofp_top.write(w + ' ||| ' + score_defs[0][0] + ' ||| ' + score_defs[0][1] + '\n')
-    for d in score_defs:
-        ofp_all.write(w + ' ||| ' + d[0] + ' ||| ' + d[1] + '\n')
-ofp_all.close()
-ofp_top.close()
+    global pattern
+    pattern = re.compile(r'(?P<words>.+) (or|,|, or|of|and) (?P=words)\b')
+    def_file = argv[1]
+    lm_file = argv[2]
+    function_word_file = argv[3]
+    output_file = argv[4]
+
+    global lm
+    lm = kenlm.Model(lm_file)
+    function_words = set()
+    with open(function_word_file) as ifp:
+        for line in ifp:
+            function_words.add(line.strip())
+
+    # print("Reading the definitions...")
+    with open(def_file) as ifp:
+        defs, ndefs = read_definition_file(ifp)
+    # print(" - {} words being defined".format(len(defs)))
+    # print(" - {} definitions".format(ndefs))
+
+    # print("Reranking...")
+    ofp_all = open(output_file, 'w')
+    ofp_top = open(output_file + '.top', 'w')
+    for w in defs:
+        score_defs = []
+        for s, d in defs[w]:
+            score_defs.append((s, d, score(d)))
+        score_defs.sort(key=lambda tup: tup[2])
+        ofp_top.write(w + ' ||| ' + score_defs[0][0] + ' ||| ' + score_defs[0][1] + '\n')
+        for d in score_defs:
+            ofp_all.write(w + ' ||| ' + d[0] + ' ||| ' + d[1] + '\n')
+    ofp_all.close()
+    ofp_top.close()

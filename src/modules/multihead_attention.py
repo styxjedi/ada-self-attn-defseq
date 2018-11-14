@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn import Parameter
 import torch.nn.functional as F
 
-from . import fairseq_utils
+from . import utils
 
 
 class MultiheadAttention(nn.Module):

@@ -31,14 +31,42 @@ def add_training_args(parser):
         help='learning rate for the whole model')
     parser.add_argument('--clip', type=float, default=0.1)
     parser.add_argument('--l2_rate', type=float, default=0.2)
+    parser.add_argument(
+        '--early_stop',
+        action='store_true',
+        default=True,
+        help='stop if valid ppl not decrease')
+    parser.add_argument(
+        '--patient',
+        type=int,
+        default=5,
+        help='epoches not decrease (for early stop)')
+    parser.add_argument(
+        '--no_epoch_save',
+        action='store_true',
+        default=False,
+        help='only save the best model')
+    parser.add_argument(
+        '--eval_size', type=int,
+        default=50)  # on cluster setup, 60 each x 4 for Huckle server
+    parser.add_argument(
+        '--test_epoch',
+        type=int,
+        default=10,
+        help='test after n epoches')
+    parser.add_argument(
+        '--warmup_epochs',
+        type=int,
+        default=5,
+        help='warmup for n epoches')
+    parser.add_argument(
+        '--warmup_lr',
+        type=float,
+        default=1e-5,
+        help='warmup learning rate')
 
     # Training details
     parser.add_argument('--num_epochs', type=int, default=50)
-
-    # For eval_size > 30, it will cause cuda OOM error on Huckleberry
-    parser.add_argument(
-        '--eval_size', type=int, default=30)  # on cluster setup, 30 each x 4
-    parser.add_argument('--num_workers', type=int, default=4)
 
     return parser
 
@@ -48,10 +76,10 @@ def add_inference_args(parser):
         '--test_path', type=str, default='./data/processed/test.npz')
     parser.add_argument(
         '--output_path', type=str, help='path for output directory')
-    parser.add_argument(
-        '--test_size', type=int, default=1, help='test batch size')
-    parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--beam_size', type=int, default=1, help='beam size')
+    parser.add_argument(
+        '--test_size', type=int,
+        default=50)  # on cluster setup, 60 each x 4 for Huckle server
     parser.add_argument(
         '--temperature',
         type=float,
@@ -75,6 +103,11 @@ def add_args(parser, mode):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-f', default='self', help='To make it runnable in jupyter')
+    parser.add_argument(
+        '--model_name',
+        default='model',
+        type=str,
+        help='name of the model')
     parser.add_argument(
         '--word2idx_path',
         type=str,
@@ -184,6 +217,7 @@ def add_args(parser, mode):
     parser.add_argument(
         '--batch_size', type=int,
         default=50)  # on cluster setup, 60 each x 4 for Huckle server
+    parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--bos', type=int, default=1)
     parser.add_argument('--eos', type=int, default=2)
     parser.add_argument('--unk', type=int, default=3)
@@ -200,6 +234,7 @@ def add_args(parser, mode):
 
     if mode == 'train':
         parser = add_training_args(parser)
+        parser = add_inference_args(parser)
     elif mode == 'inference':
         parser = add_inference_args(parser)
     else:

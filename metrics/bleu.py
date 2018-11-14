@@ -102,13 +102,13 @@ def bleu(ref_file, hyp_file):
     return score / count, total_hyps, total_refs
 
 
-def main(argv=None):
+def compute_bleu(argv=None):
     if argv is None:
         argv = sys.argv
         if len(argv) != 3:
             raise ValueError("Args Num Not Match.")
-    ref_file = sys.argv[1]
-    hyp_file = sys.argv[2]
+    ref_file = argv[1]
+    hyp_file = argv[2]
     score, total_hyps, total_refs = bleu(ref_file, hyp_file)
     print(score)
     print(total_hyps)
@@ -117,4 +117,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(compute_bleu())

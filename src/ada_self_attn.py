@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.nn import init
-from utils import to_var
+from modules.utils import to_var
 from self_attn_encoder import TransformerEncoder
 from adaptive_decoder import AdaptiveDecoder
 
@@ -19,19 +19,8 @@ class Encoder2Decoder(nn.Module):
 
     def forward(self, word_sememes, definition, states=None):
 
-        # Data parallelism for V v_g encoder if multiple GPUs are available
-        # V=[ v_1, ..., v_k ], v_g in the original paper
-        # if torch.cuda.device_count() > 1:
-            # device_ids = range(torch.cuda.device_count())
-            # encoder_parallel = torch.nn.DataParallel(
-                # self.encoder, device_ids=device_ids)
-            # V = encoder_parallel(word_sememes)
-            # decoder_parallel = torch.nn.DataParallel(
-                    # self.decoder, device_ids=device_ids)
-            # scores, states, _, _ = decoder_parallel(V, definition)
-        # else:
         V = self.encoder(word_sememes)
-        scores, states, _, _ = self.decoder(V, definition)
+        scores, states, _, _ = self.decoder(V, word_sememes, definition)
 
         return scores, states
 
@@ -62,7 +51,7 @@ class Encoder2Decoder(nn.Module):
         for i in range(max_len):
 
             scores, states, atten_weights, beta = self.decoder(
-                V, pred_definition, states)
+                V, word_sememes, pred_definition, states)
             predicted = scores.max(2)[1]  # argmax
             pred_definition = predicted
 

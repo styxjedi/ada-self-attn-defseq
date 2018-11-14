@@ -1,34 +1,27 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
-# from torch.nn.utils.rnn import pack_padded_sequence
-# import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.nn import init
-from utils import to_var
+from modules.utils import to_var
+from modules.utils import init_weights
 
 
-# =================Knowing When to Look==================
-# Attention Block for C_hat calculation
 class Atten(nn.Module):
     def __init__(self, hidden_size, decoder_attn_embed_size, dropout):
         super(Atten, self).__init__()
 
-        self.affine_v = nn.Linear(hidden_size, decoder_attn_embed_size, bias=False)  # W_v
-        self.affine_g = nn.Linear(hidden_size, decoder_attn_embed_size, bias=False)  # W_g
-        self.affine_s = nn.Linear(hidden_size, decoder_attn_embed_size, bias=False)  # W_s
-        self.affine_h = nn.Linear(decoder_attn_embed_size, 1, bias=False)  # w_h
+        self.affine_v = nn.Linear(hidden_size, decoder_attn_embed_size)  # W_v
+        init_weights(self.affine_v, 'linear')
+        self.affine_g = nn.Linear(hidden_size, decoder_attn_embed_size)  # W_g
+        init_weights(self.affine_g, 'linear')
+        self.affine_s = nn.Linear(hidden_size, decoder_attn_embed_size)  # W_s
+        init_weights(self.affine_s, 'linear')
+        self.affine_h = nn.Linear(decoder_attn_embed_size, 1)  # w_h
+        init_weights(self.affine_h, 'linear')
 
         self.dropout = nn.Dropout(dropout)
-        self.init_weights()
-
-    def init_weights(self):
-        """Initialize the weights."""
-        init.xavier_uniform_(self.affine_v.weight)
-        init.xavier_uniform_(self.affine_g.weight)
-        init.xavier_uniform_(self.affine_h.weight)
-        init.xavier_uniform_(self.affine_s.weight)
 
     def forward(self, V, h_t, s_t):
         '''
@@ -75,17 +68,13 @@ class Sentinel(nn.Module):
     def __init__(self, input_size, hidden_size, dropout):
         super(Sentinel, self).__init__()
 
-        self.affine_x = nn.Linear(input_size, hidden_size, bias=False)
-        self.affine_h = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.affine_x = nn.Linear(input_size, hidden_size)
+        init_weights(self.affine_x, 'linear')
+        self.affine_h = nn.Linear(hidden_size, hidden_size)
+        init_weights(self.affine_h, 'linear')
 
         # Dropout applied before affine transformation
         self.dropout = nn.Dropout(dropout)
-
-        self.init_weights()
-
-    def init_weights(self):
-        init.xavier_uniform_(self.affine_x.weight)
-        init.xavier_uniform_(self.affine_h.weight)
 
     def forward(self, x_t, h_t_1, cell_t):
 
@@ -112,19 +101,13 @@ class AdaptiveBlock(nn.Module):
         self.atten = Atten(hidden_size, decoder_attn_embed_size, dropout)
 
         # Final Caption generator
-        self.mlp = nn.Linear(hidden_size, vocab_size, bias=False)
+        self.mlp = nn.Linear(hidden_size, vocab_size)
+        init_weights(self.mlp, 'linear')
 
         # Dropout layer inside Affine Transformation
         self.dropout = nn.Dropout(dropout)
 
         self.hidden_size = hidden_size
-        self.init_weights()
-
-    def init_weights(self):
-        '''
-        Initialize final classifier weights
-        '''
-        init.xavier_uniform_(self.mlp.weight)
 
     def forward(self, x, hiddens, cells, V):
 
@@ -168,27 +151,22 @@ class AdaptiveBlock(nn.Module):
 class AdaptiveDecoder(nn.Module):
     def __init__(self, args, word_emb):
         super(AdaptiveDecoder, self).__init__()
-
         # word embedding
+        self.relu_dropout = args.relu_dropout
         self.embed = self.from_pretrained(word_emb, freeze=True)
 
-        # V affine
-        self.affine_v = nn.Linear(args.embed_size, args.hidden_size, bias=False)
-        self.init_weights()
-
+        self.w_to_h = nn.Linear(args.embed_size, args.hidden_size)
+        init_weights(self.w_to_h, 'relu')
+        self.w_to_c = nn.Linear(args.embed_size, args.hidden_size)
+        init_weights(self.w_to_c, 'relu')
         # LSTM decoder: input = [ w_t; v_g ] => 2 x word_embed_size;
         self.LSTM = nn.LSTM(args.embed_size, args.hidden_size, 1, batch_first=True)
-
+        init_weights(self.LSTM)
         # Save hidden_size for hidden and cell variable
         self.hidden_size = args.hidden_size
-
         # Adaptive Attention Block:
         # Sentinel + C_hat + Final scores for caption sampling
         self.adaptive = AdaptiveBlock(args.embed_size, args.hidden_size, args.decoder_attn_embed_size, args.vocab_size, args.dropout)
-
-    def init_weights(self):
-        """Initialize the weights."""
-        init.xavier_uniform_(self.affine_v.weight)
 
     def from_pretrained(self, embeddings, freeze=True):
         assert embeddings.dim() == 2, \
@@ -200,21 +178,18 @@ class AdaptiveDecoder(nn.Module):
         embedding.weight.requires_grad = not freeze
         return embedding
 
-    def forward(self, V, definition, states=None):
-        # Sort def seq lengths
-        # sorted_def_lens, indices = torch.sort(def_len, desending=True)
-        # _, desorted_indices = torch.sort(indices, desending=False)
-        # difinition = pack_padded_sequence(definition[indices], def_len, batch_first=True)
-
+    def forward(self, V, word_sememes, definition, states=None):
         # Word Embedding
+        w = self.embed(word_sememes[:, 0])
         x = self.embed(definition)
-        V = self.affine_v(V)
-        # word_emb = self.embed(word).squeeze(1)
-        # word_emb = self.affine_word(word_emb)
 
-        # x_t = [w_t;v_g]
-        # x = torch.cat(
-            # (embeddings, v_g.unsqueeze(1).expand_as(embeddings)), dim=2)
+        h = F.relu(self.w_to_h(w))
+        h = F.dropout(h, p=self.relu_dropout, training=self.training)
+        c = F.relu(self.w_to_c(w))
+        c = F.dropout(c, p=self.relu_dropout, training=self.training)
+
+        if states is None:
+            states = (h.unsqueeze(0), c.unsqueeze(0))
 
         # Hiddens: Batch x seq_len x hidden_size
         # Cells: seq_len x Batch x hidden_size, default setup by Pytorch
@@ -223,22 +198,11 @@ class AdaptiveDecoder(nn.Module):
                 torch.zeros(x.size(0), x.size(1), self.hidden_size).cuda())
             cells = Variable(
                 torch.zeros(x.size(1), x.size(0), self.hidden_size).cuda())
-            # if states is None:
-                # states = [
-                    # word_emb.unsqueeze(0),
-                    # Variable(
-                        # torch.zeros(1, x.size(0), self.hidden_size).cuda())
-                # ]
         else:
             hiddens = Variable(
                 torch.zeros(x.size(0), x.size(1), self.hidden_size))
             cells = Variable(
                 torch.zeros(x.size(1), x.size(0), self.hidden_size))
-            # if states is None:
-                # states = [
-                    # word_emb.unsqueeze(0),
-                    # Variable(torch.zeros(1, x.size(0), self.hidden_size))
-                # ]
 
         # Recurrent Block
         # Retrieve hidden & cell for Sentinel simulation
@@ -256,17 +220,6 @@ class AdaptiveDecoder(nn.Module):
 
         # cell: Batch x seq_len x hidden_size
         cells = cells.transpose(0, 1)
-
-        # Data parallelism for adaptive attention block
-        # if torch.cuda.device_count() > 1:
-            # device_ids = range(torch.cuda.device_count())
-            # adaptive_block_parallel = nn.DataParallel(
-                # self.adaptive, device_ids=device_ids)
-
-            # scores, atten_weights, beta = adaptive_block_parallel(
-                # x, hiddens, cells, V)
-        # else:
         scores, atten_weights, beta = self.adaptive(x, hiddens, cells, V)
-
         # Return states for Caption Sampling purpose
         return scores, states, atten_weights, beta

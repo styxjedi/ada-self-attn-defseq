@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.onnx.operators
 
-from . import fairseq_utils
+from . import utils
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
@@ -76,7 +76,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
                 return self.weights[self.padding_idx + pos, :].unsqueeze(1).repeat(bsz, 1, 1)
             return self.weights[self.padding_idx + pos, :].expand(bsz, 1, -1)
 
-        positions = fairseq_utils.make_positions(input, self.padding_idx, self.left_pad, self.onnx_trace)
+        positions = utils.make_positions(input, self.padding_idx, self.left_pad, self.onnx_trace)
         if self.onnx_trace:
             flat_embeddings = self.weights.detach().index_select(0, positions.view(-1))
             embedding_shape = torch.cat((bsz.view(1), seq_len.view(1), torch.LongTensor([-1])))

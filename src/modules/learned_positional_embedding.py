@@ -7,7 +7,7 @@
 
 import torch.nn as nn
 
-from . import fairseq_utils
+from . import utils
 
 
 class LearnedPositionalEmbedding(nn.Embedding):
@@ -27,7 +27,7 @@ class LearnedPositionalEmbedding(nn.Embedding):
             # positions is the same for every token when decoding a single step
             positions = input.data.new(1, 1).fill_(self.padding_idx + input.size(1))
         else:
-            positions = fairseq_utils.make_positions(input.data, self.padding_idx, self.left_pad)
+            positions = utils.make_positions(input.data, self.padding_idx, self.left_pad)
         return super().forward(positions)
 
     def max_positions(self):

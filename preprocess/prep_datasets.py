@@ -98,7 +98,7 @@ def make_dataset(inp_path, word2idx, sememe2idx, max_def_len, max_sem_len):
     definition_list = []
     def_len_list = []
     for word, sememes, definition in data_content:
-        tmp_word_sememe = [word2idx[word], word2idx[args.bos]]
+        tmp_word_sememe = [word2idx[word], ]
         sememes = [sememe2idx[s] for s in sememes.split(' ')]
         tmp_word_sememe.extend(sememes)
         word_sememe_list.append(tmp_word_sememe)
@@ -128,7 +128,7 @@ def make_test_dataset(inp_path, word2idx, sememe2idx, max_sem_len):
             continue
         else:
             word_sememe_set.add((word, sememes))
-        tmp_word_sememe = [word2idx[word], word2idx[args.bos]]
+        tmp_word_sememe = [word2idx[word],]
         sememes = [sememe2idx[s] for s in sememes.split(' ')]
         tmp_word_sememe.extend(sememes)
         word_sememe_list.append(tmp_word_sememe)
